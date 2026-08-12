@@ -1,0 +1,20 @@
+# Raw / derived data (large and/or not ours to redistribute)
+*.csv.zip
+train_data.csv
+train_data.zip
+test_data.csv
+test_data_private.csv
+X_test_imp_export.csv
+X_test_scaled_export.csv
+
+# Notebook / Python
+.ipynb_checkpoints/
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+
+# OS junk
+.DS_Store
+Thumbs.db
