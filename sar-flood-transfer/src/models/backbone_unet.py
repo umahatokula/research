@@ -111,6 +111,35 @@ def _decoder_stage(x, skip, filters: int, name: str):
     return _conv_block(x, filters, name)
 
 
+def attach_decoder(
+    encoder: tf.keras.Model,
+    decoder_filters: tuple[int, ...] = (256, 128, 64, 32, 16),
+    name: str = "resnet50v2_unet",
+) -> tf.keras.Model:
+    """Attach a U-Net decoder to an already-built encoder (see build_encoder()).
+
+    Split out from build_unet() so callers that need to keep a handle on the
+    standalone encoder (e.g. to save just its weights after pretraining) can
+    build the encoder once and reuse it, rather than only getting the fused
+    full model back.
+    """
+    if len(decoder_filters) != 5:
+        raise ValueError("decoder_filters must have exactly 5 stages (one per upsample step to input resolution)")
+
+    inp = encoder.input
+    e1, e2, e3, e4 = encoder.output["e1"], encoder.output["e2"], encoder.output["e3"], encoder.output["e4"]
+    bottleneck = encoder.output["bottleneck"]
+
+    x = _decoder_stage(bottleneck, e4, decoder_filters[0], "dec1")  # 16 -> 32
+    x = _decoder_stage(x, e3, decoder_filters[1], "dec2")  # 32 -> 64
+    x = _decoder_stage(x, e2, decoder_filters[2], "dec3")  # 64 -> 128
+    x = _decoder_stage(x, e1, decoder_filters[3], "dec4")  # 128 -> 256
+    x = _decoder_stage(x, inp, decoder_filters[4], "dec5")  # 256 -> 512 (skip = raw input)
+
+    output = layers.Conv2D(1, 1, activation="sigmoid", name="segmentation_output")(x)
+    return tf.keras.Model(inputs=inp, outputs=output, name=name)
+
+
 def build_unet(
     input_shape: tuple[int, int, int] = (512, 512, 1),
     init_mode: InitMode = "random",
@@ -124,22 +153,8 @@ def build_unet(
     study conditions, per the handoff doc's "same architecture ... only
     initialization differs" requirement.
     """
-    if len(decoder_filters) != 5:
-        raise ValueError("decoder_filters must have exactly 5 stages (one per upsample step to input resolution)")
-
     encoder = build_encoder(input_shape, init_mode, oilspill_weights_path)
-    inp = encoder.input
-    e1, e2, e3, e4 = encoder.output["e1"], encoder.output["e2"], encoder.output["e3"], encoder.output["e4"]
-    bottleneck = encoder.output["bottleneck"]
-
-    x = _decoder_stage(bottleneck, e4, decoder_filters[0], "dec1")  # 16 -> 32
-    x = _decoder_stage(x, e3, decoder_filters[1], "dec2")  # 32 -> 64
-    x = _decoder_stage(x, e2, decoder_filters[2], "dec3")  # 64 -> 128
-    x = _decoder_stage(x, e1, decoder_filters[3], "dec4")  # 128 -> 256
-    x = _decoder_stage(x, inp, decoder_filters[4], "dec5")  # 256 -> 512 (skip = raw input)
-
-    output = layers.Conv2D(1, 1, activation="sigmoid", name="segmentation_output")(x)
-    return tf.keras.Model(inputs=inp, outputs=output, name=f"resnet50v2_unet_{init_mode}")
+    return attach_decoder(encoder, decoder_filters, name=f"resnet50v2_unet_{init_mode}")
 
 
 def build_probe_model(encoder: tf.keras.Model, depth: str) -> tf.keras.Model:
