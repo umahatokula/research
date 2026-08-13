@@ -14,12 +14,38 @@ segmentation pretraining", not full 5-class semantic segmentation.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import numpy as np
 from PIL import Image
 
 OIL_SPILL_CLASS = 1
+
+# Directory names known NOT to be the Krestenitis dataset root, skipped when
+# searching a shared parent directory (e.g. a Drive folder that also holds
+# this project's own checkpoints/data/figures/results).
+_NON_DATASET_DIR_NAMES = frozenset({"checkpoints", "data", "figures", "results"})
+
+
+def find_dataset_root(base_dir: Path) -> Path | None:
+    """Find the Krestenitis dataset root under base_dir, regardless of its name.
+
+    Searches for a directory containing a `train/images` subfolder. This
+    exists because the dataset's own top-level folder name isn't guaranteed
+    (e.g. a zip re-upload produced "Oil Spill Detection Dataset" with
+    spaces, not the "Oil_Spill_Detection_Dataset" name used locally --
+    silent failure the first time this was deployed to Colab, since an
+    empty-glob path doesn't raise, it just yields zero training samples).
+    """
+    base_dir = Path(base_dir)
+    for root, dirs, _files in os.walk(base_dir):
+        root = Path(root)
+        if root == base_dir:
+            dirs[:] = [d for d in dirs if d not in _NON_DATASET_DIR_NAMES]
+        if "train" in dirs and (root / "train" / "images").is_dir():
+            return root
+    return None
 
 
 def list_sample_stems(images_dir: Path) -> list[str]:
