@@ -8,6 +8,14 @@ LabelHand GeoTIFFs are (512, 512) int16 with values {-1, 0, 1}: -1 is
 no-data/cloud-masked and must be excluded from loss and metrics (handoff
 doc, Step 1) -- it is kept as -1 here, not remapped, so every consumer
 (metrics.py, loss functions) can filter on the same sentinel value.
+
+By default, labels are converted to FLOOD water only: JRC permanent-water
+pixels are subtracted out (relabeled 0), so a pixel reads 1 only if it's
+water in the hand-labeled mask AND not permanent water per JRC. This is
+what supports the paper's actual "flood segmentation" claim rather than
+the more conservative "surface-water segmentation" fallback the handoff
+doc requires if this step is skipped -- see CHANNEL_COMPATIBILITY.md and
+the handoff doc's Step 1 for the exact rule.
 """
 
 from __future__ import annotations
@@ -23,8 +31,27 @@ DB_CLIP_MIN = -50.0
 DB_CLIP_MAX = 1.0
 
 
-def load_chip(chip_id: str, data_dir: Path) -> tuple[np.ndarray, np.ndarray]:
+def derive_flood_label(label: np.ndarray, permanent_water: np.ndarray) -> np.ndarray:
+    """Subtract JRC permanent water from a raw water label, leaving flood water only.
+
+    -1 (no-data) pixels pass through unchanged. Label-1 pixels that coincide
+    with JRC permanent water become 0 (they're water, but not flood water).
+    Label-0 pixels are unaffected.
+    """
+    flood = label.copy()
+    is_permanent_water = permanent_water.astype(bool)
+    flood[(label == 1) & is_permanent_water] = 0
+    return flood
+
+
+def load_chip(chip_id: str, data_dir: Path, separate_permanent_water: bool = True) -> tuple[np.ndarray, np.ndarray]:
     """Load one chip's VV image and label mask.
+
+    Args:
+        separate_permanent_water: if True (default), subtract JRC permanent
+            water from the label so it reflects flood water only (see module
+            docstring). If False, the raw water label is returned as-is, and
+            any downstream writeup must say "surface-water segmentation".
 
     Returns:
         vv: float32 array, shape (512, 512, 1), values in [0, 1].
@@ -47,6 +74,12 @@ def load_chip(chip_id: str, data_dir: Path) -> tuple[np.ndarray, np.ndarray]:
 
     if vv.shape[:2] != label.shape[:2]:
         raise ValueError(f"VV/label shape mismatch for {chip_id}: {vv.shape} vs {label.shape}")
+
+    if separate_permanent_water:
+        permanent_water = load_permanent_water(chip_id, data_dir)
+        if permanent_water.shape[:2] != label.shape[:2]:
+            raise ValueError(f"JRC/label shape mismatch for {chip_id}: {permanent_water.shape} vs {label.shape}")
+        label = derive_flood_label(label, permanent_water)
 
     return vv, label
 

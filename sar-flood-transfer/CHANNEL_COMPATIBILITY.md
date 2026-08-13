@@ -104,3 +104,13 @@ existing model" in code, comments, or the eventual manuscript. Refer to it as
 was pretrained specifically for this study on the Krestenitis dataset using
 the same backbone as the other two conditions, rather than reusing a
 previously existing checkpoint.
+
+## Flood vs. surface-water labeling (resolved separately, noted here for completeness)
+
+The pipeline separates JRC permanent water from the hand-labeled water mask
+(`src/data/sen1floods11_dataset.py::derive_flood_label`), so labels reflect
+flood water specifically. This is what supports the paper's actual title
+("...Flood Segmentation...") rather than the handoff doc's fallback
+"surface-water segmentation" framing, which would apply if this step were
+skipped. See `SPLIT_AUDIT.md` for the separate (and more consequential)
+finding about event overlap in the official train/val/test split.
