@@ -5,6 +5,12 @@ Per the handoff doc: smoke-test ONE configuration (all 3 initializations,
 exactly that; without the flag, every (initialization, label_fraction, seed)
 combination is run, in an order that surfaces problems early (smoke-test
 config first, then the rest).
+
+Resumable: a config already present in output_csv is skipped rather than
+re-run. This matters for cloud execution, where a multi-hour job commonly
+spans more than one Colab session (idle/runtime-length disconnects) -- an
+interrupted run can be restarted with the same command and picks up where
+it left off instead of redoing completed work.
 """
 
 from __future__ import annotations
@@ -12,6 +18,8 @@ from __future__ import annotations
 import argparse
 import itertools
 from pathlib import Path
+
+import pandas as pd
 
 from src.data.label_fractions import DEFAULT_FRACTIONS
 from src.training.train_flood_segmentation import run_single_training
@@ -29,6 +37,17 @@ def build_run_matrix(smoke_test: bool) -> list[tuple[str, float, int]]:
     return list(itertools.product(INITIALIZATIONS, DEFAULT_FRACTIONS, SEEDS))
 
 
+def get_completed_configs(output_csv: Path) -> set[tuple[str, float, int]]:
+    """Configs already present in output_csv, as (initialization, label_fraction, seed) tuples."""
+    output_csv = Path(output_csv)
+    if not output_csv.exists():
+        return set()
+    df = pd.read_csv(output_csv)
+    if df.empty:
+        return set()
+    return set(zip(df["initialization"], df["label_fraction"].astype(float), df["seed"].astype(int)))
+
+
 def run_matrix(
     data_dir: Path,
     output_csv: Path,
@@ -39,10 +58,16 @@ def run_matrix(
     epochs: int = 30,
 ) -> None:
     configs = build_run_matrix(smoke_test)
-    print(f"Running {len(configs)} configuration(s) {'(smoke test)' if smoke_test else '(FULL MATRIX)'}")
+    completed = get_completed_configs(output_csv)
+    remaining = [c for c in configs if c not in completed]
 
-    for i, (initialization, label_fraction, seed) in enumerate(configs, 1):
-        print(f"\n[{i}/{len(configs)}] init={initialization} label_fraction={label_fraction} seed={seed}")
+    print(
+        f"{len(configs)} configuration(s) total {'(smoke test)' if smoke_test else '(FULL MATRIX)'}, "
+        f"{len(completed & set(configs))} already completed, {len(remaining)} remaining"
+    )
+
+    for i, (initialization, label_fraction, seed) in enumerate(remaining, 1):
+        print(f"\n[{i}/{len(remaining)}] init={initialization} label_fraction={label_fraction} seed={seed}")
         result = run_single_training(
             initialization=initialization,
             label_fraction=label_fraction,

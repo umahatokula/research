@@ -3,7 +3,14 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from src.training.frozen_probe import DEPTHS, INITIALIZATIONS, SEEDS, build_probe_matrix, run_single_probe
+from src.training.frozen_probe import (
+    DEPTHS,
+    INITIALIZATIONS,
+    SEEDS,
+    build_probe_matrix,
+    get_completed_probe_configs,
+    run_single_probe,
+)
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data" / "sen1floods11"
 requires_real_data = pytest.mark.skipif(not (DATA_DIR / "S1Hand").exists(), reason="Sen1Floods11 data not downloaded")
@@ -19,6 +26,18 @@ def test_probe_matrix_covers_every_combination_exactly_once():
     expected = {(init, depth, seed) for init in INITIALIZATIONS for depth in DEPTHS for seed in SEEDS}
     assert set(configs) == expected
     assert len(configs) == len(set(configs))
+
+
+def test_get_completed_probe_configs_empty_when_no_csv(tmp_path):
+    assert get_completed_probe_configs(tmp_path / "missing.csv") == set()
+
+
+def test_get_completed_probe_configs_reads_existing_rows(tmp_path):
+    csv_path = tmp_path / "results.csv"
+    pd.DataFrame(
+        [{"initialization": "random", "depth": "early", "seed": 0, "iou": 0.4, "f1": 0.5}]
+    ).to_csv(csv_path, index=False)
+    assert get_completed_probe_configs(csv_path) == {("random", "early", 0)}
 
 
 @requires_real_data

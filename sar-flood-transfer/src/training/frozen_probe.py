@@ -37,6 +37,17 @@ def build_probe_matrix() -> list[tuple[str, str, int]]:
     return list(itertools.product(INITIALIZATIONS, DEPTHS, SEEDS))
 
 
+def get_completed_probe_configs(output_csv: Path) -> set[tuple[str, str, int]]:
+    """Configs already present in output_csv, as (initialization, depth, seed) tuples."""
+    output_csv = Path(output_csv)
+    if not output_csv.exists():
+        return set()
+    df = pd.read_csv(output_csv)
+    if df.empty:
+        return set()
+    return set(zip(df["initialization"], df["depth"], df["seed"].astype(int)))
+
+
 def evaluate_probe_test_set(probe: tf.keras.Model, test_chip_ids: list[str], data_dir: Path) -> dict[str, float]:
     all_true, all_pred = [], []
     for chip_id in test_chip_ids:
@@ -96,9 +107,15 @@ def run_probe_matrix(
     epochs: int = 15,
 ) -> None:
     configs = build_probe_matrix()
-    print(f"Running {len(configs)} frozen-feature probe configuration(s)")
-    for i, (initialization, depth, seed) in enumerate(configs, 1):
-        print(f"\n[{i}/{len(configs)}] init={initialization} depth={depth} seed={seed}")
+    completed = get_completed_probe_configs(output_csv)
+    remaining = [c for c in configs if c not in completed]
+
+    print(
+        f"{len(configs)} frozen-feature probe configuration(s) total, "
+        f"{len(completed & set(configs))} already completed, {len(remaining)} remaining"
+    )
+    for i, (initialization, depth, seed) in enumerate(remaining, 1):
+        print(f"\n[{i}/{len(remaining)}] init={initialization} depth={depth} seed={seed}")
         metrics = run_single_probe(
             initialization=initialization,
             depth=depth,
