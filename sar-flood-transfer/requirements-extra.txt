@@ -1,0 +1,6 @@
+# Extra dependencies for sar-flood-transfer, on top of ../requirements.txt
+tensorflow>=2.15
+tifffile
+imagecodecs
+tqdm
+pytest

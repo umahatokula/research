@@ -1,0 +1,10 @@
+/data/
+*.tif
+*.tiff
+*.keras
+*.h5
+*.weights.h5
+__pycache__/
+*.pyc
+.pytest_cache/
+.ipynb_checkpoints/
